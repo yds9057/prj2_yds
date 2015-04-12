@@ -54,12 +54,54 @@ start_process (void *f_name)
   struct intr_frame if_;
   bool success;
 
+  char *save_ptr, *token;
+  int len, argc, i;
+
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
-  success = load (file_name, &if_.eip, &if_.esp);
+
+  token = strtok_r (file_name, " ", &save_ptr);
+  success = load (token, &if_.eip, &if_.esp);
+
+  if (success)
+  {
+    len = strlen (token) + 1;
+    if_.esp -= len;
+    strlcpy ((char *)if_.esp, token, len);
+    argc = 1;
+
+    while ((token = strtok_r (NULL, " ", &save_ptr)) != NULL)
+    {
+      argc++;
+      len = strlen (token) + 1;
+      if_.esp -= len;
+      strlcpy ((char *)if_.esp, token, len);
+    }
+
+    save_ptr = (char *)if_.esp;
+    if_.esp -= (((unsigned)if_.esp % 4) + 4);
+    *(unsigned *)if_.esp = 0;
+
+    for (i = 0; i < argc; i++)
+    {
+      if_.esp -= 4;
+      *(unsigned *)if_.esp = (unsigned)save_ptr;
+      save_ptr += strlen (save_ptr) + 1;
+    }
+
+    save_ptr = (char *)if_.esp;
+    if_.esp -= 4;
+    *(unsigned *)if_.esp = (unsigned)save_ptr;
+
+    if_.esp -= 4;
+    *(unsigned *)if_.esp = (unsigned)argc;
+
+    if_.esp -= 4;
+    *(unsigned *)if_.esp = 0;
+  }
 
   /* If load failed, quit. */
   palloc_free_page (file_name);
